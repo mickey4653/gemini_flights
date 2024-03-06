@@ -4,10 +4,18 @@ from datetime import datetime, timedelta, time, date
 from dateutil.parser import parse
 from typing import Optional
 from fastapi import Depends, HTTPException
-from sqlalchemy import and_, func
-from sqlalchemy.orm import Session
-from models import Flight, FlightModel, FlightSearchCriteria, get_db
+from sqlalchemy import and_, func, create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from models import Flight, FlightModel, FlightSearchCriteria, FlightBookCriteria, get_db
 import logging
+
+
+DATABASE_URL = "sqlite:///./flights.db"
+engine = create_engine(DATABASE_URL)
+
+# Configure the session
+Session = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+DATA = Session()
 
 # Create a logger for this module
 logger = logging.getLogger(__name__)
@@ -284,4 +292,43 @@ def search_flights(**params):
     response = requests.get(url, headers={'accept': 'application/json'})
 
     # Returning the JSON response
+    return response.json()
+def book_flights(**params):
+    """
+    Sends a POST request to a FastAPI endpoint to book flights based on various criteria.
+
+    Parameters:
+    - params: A dictionary containing the booking criteria.
+
+    Returns:
+    The response from the FastAPI endpoint as a JSON object.
+    """
+    # Create an instance of FlightBookCriteria from the passed arguments
+    criteria = FlightBookCriteria(**params)
+
+    # Query the database to find the flight by its flight number
+    query = DATA.query(Flight).filter(Flight.flight_number == criteria.flight_number)
+    flight = query.first()        
+
+    # Check if the flight exists
+    if not flight:
+        return {"error": "Flight not found"}
+
+    # Extract the flight ID
+    flight_id = flight.flight_id
+
+    # Construct the URL with query parameters
+    url = f"http://127.0.0.1:8000/book_flight/?flight_id={flight_id}&seat_type={criteria.seat_type}&num_seats={criteria.num_seats}"
+    
+    # Create the payload for the POST request
+    payload = {
+        "flight_id": flight_id,
+        "seat_type": criteria.seat_type,
+        "num_seats": criteria.num_seats
+    }
+    
+    # Make the POST request
+    response = requests.post(url, json=payload, headers={'accept': 'application/json'})
+
+    # Return the JSON response
     return response.json()
